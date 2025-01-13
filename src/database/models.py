@@ -57,7 +57,8 @@ class model(Base):
     model_name = Column(String, unique=True, index=True)
 
 
-Base.metadata.create_all(bind=engine)
+def create_tables():
+    Base.metadata.create_all(bind=engine)
 
 
 

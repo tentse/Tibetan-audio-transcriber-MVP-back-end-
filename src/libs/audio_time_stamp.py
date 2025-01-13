@@ -7,8 +7,8 @@ model = load_silero_vad()
 async def test():
     return "Hello Testing"
 
-async def get_time_stamp(audio_file):
-    file_byte = await audio_file.read()
+async def get_time_stamp(audio_content):
+    file_byte = audio_content
     audio_file = io.BytesIO(file_byte)
     audio_file = io.BytesIO(file_byte)
     wav = read_audio(audio_file)
