@@ -5,11 +5,23 @@ from src.database.models import model
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from src.routes import user, project
+from src.database.models import create_tables
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
 STATIC_DIR = Path("src/static")
+
+create_tables()
 
 @app.get("/")
 async def root():
