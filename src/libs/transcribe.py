@@ -1,38 +1,14 @@
 import asyncio
 import httpx
-from fastapi import HTTPException
-from typing import Tuple
 import librosa
 import soundfile as sf
 import io
 import os
 from dotenv import load_dotenv
-import redis
-import json
-
-redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-
+from src.libs.update_status import update_translation_status
+import time
 
 load_dotenv()
-
-def update_translation_status(job_id: str, status: str, progress: float = 0, error: str = None):
-    """Update translation status in Redis
-    
-    Args:
-        job_id (str): Unique identifier for the translation job
-        status (str): Current status of the translation
-        progress (float, optional): Progress percentage. Defaults to 0.
-        error (str, optional): Error message if any. Defaults to None.
-    """
-    if status == "success":
-        redis_client.delete(f'translation_status:{job_id}')
-    else:
-        status_data = {
-            'status': status,
-            'progress': progress,
-            'error': error
-        }
-        redis_client.set(f'translation_status:{job_id}', json.dumps(status_data))
 
 async def speech_to_text_tibetan(audio:str) -> dict:
     """Convert speech to text using the STT model."""
@@ -70,24 +46,6 @@ async def speech_to_text_tibetan(audio:str) -> dict:
         return {"error": "error in speech to text", "details": str(e)}
 
 
-# async def transcribe(audio_data): 
-#     # print(url)
-#     # Read the audio file as binary
-#     try:
-#         # with open(url, "rb") as audio_file:
-#         #     audio_data = audio_file.read()
-
-#         # print(audio_data)
-
-#         # flac_audio, flac_filename = await convert_to_flac(audio_data, "output_segment")
-
-#         transript = await speech_to_text_tibetan(audio_data)
-        
-#         return transript
-
-#     except Exception as error:
-#         return str(error)
-
 async def segment_and_transcribe(total_audio_segments, project_id, audio_data, time_stamp):
     try:
         # print('here')
@@ -95,7 +53,7 @@ async def segment_and_transcribe(total_audio_segments, project_id, audio_data, t
         # print(time_stamp)
         transcribed_audio_list = []
         segment_completed_count = 0
-        print('am here')
+        # print('am here')
         for time in time_stamp:
             start_sample = int(time['start'] * sr)
             end_sample = int(time['end'] * sr)
@@ -112,6 +70,8 @@ async def segment_and_transcribe(total_audio_segments, project_id, audio_data, t
 
             # check if transcribe text contains error
             while 'error' in transcribe_text:
+                print("error while transcribing audio segment, retrying")
+                time.sleep(10)
                 transcribe_text = await speech_to_text_tibetan(read_audio)
             
             transcribed_audio_list.append([time['start'], time['end'], transcribe_text])
@@ -125,13 +85,3 @@ async def segment_and_transcribe(total_audio_segments, project_id, audio_data, t
     
     except Exception as e:
         return ({"error": "Error segmenting audio"}, e)
-        # Segment the audio file
-        # segments = await audio_segment(audio_data, time_stamp)
-        # print(segments)
-        # if segments == None:
-        #     return {"error": "Error segmenting audio"}
-
-        # Transcribe each segment
-        # transcriptions = []
-        # for segment in segments:
-        #     transcription = await transcribe(segment)

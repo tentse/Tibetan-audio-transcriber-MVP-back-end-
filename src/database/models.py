@@ -40,6 +40,7 @@ class Project(Base):
     model = Column(String)
 
 class audio_segment(Base):
+    
     __tablename__ = "audio_segments"
 
     id = Column(Integer, primary_key=True, index=True)

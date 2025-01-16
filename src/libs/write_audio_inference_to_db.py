@@ -1,5 +1,6 @@
-from src.database.models import audio_segment, get_db
+from src.database.models import audio_segment, get_db, Project
 from contextlib import contextmanager
+from src.libs.update_status import update_translation_status
 
 @contextmanager
 def get_db_session():
@@ -32,4 +33,13 @@ async def write_audio_inference_to_db(email, project_id, file, model):
 
         db.add_all(segments_to_add)
         db.commit()
+
+        update_translation_status(project_id, "success", 100, "NONE")
+
+        # update the status field in the project table
+        project = db.query(Project).filter(Project.project_id == project_id).first()
+        project.project_status = "COMPLETED"
+        db.commit()
+
+
         return {"message": "success"}
