@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 router = APIRouter()
 
-@router.post('/user/register')
+@router.post('/register')
 async def register_user(name: str, email: str, db: Session = Depends(get_db)):
     # save email to database
     new_user = User(name=name, email=email)
@@ -13,7 +13,7 @@ async def register_user(name: str, email: str, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
-@router.get('/user/{email}')
+@router.get('/{email}')
 async def get_user(email: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
     if (user == None):

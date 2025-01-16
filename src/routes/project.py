@@ -1,20 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from src.database.models import Project, get_db, audio_segment
 from sqlalchemy.orm import Session
 import uuid
 import io
 from datetime import date
-from src.libs.audio_time_stamp import get_time_stamp
-from src.libs.transcribe import segment_and_transcribe
-from src.libs.write_audio_inference_to_db import write_audio_inference_to_db
 from src.celery_task.task import speech_to_text_task
 import redis
 import json
+from src.libs.update_status import update_translation_status
 
 router = APIRouter()
 
 redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
 
 @router.get('/{email}')
 async def get_projects(email: str, db: Session = Depends(get_db)):
@@ -24,9 +23,9 @@ async def get_projects(email: str, db: Session = Depends(get_db)):
         return {"message": "User doesn't have any projects currently"}
     return projects
 
+
 @router.post('/create/{email}/{model}')
 async def create_project(email: str, file: UploadFile, model: str, db: Session = Depends(get_db)):
-    # check audio file length is <= 1hr
     contents = await file.read()
     await file.seek(0)
     # if (len(contents) > 3600000):
@@ -35,20 +34,9 @@ async def create_project(email: str, file: UploadFile, model: str, db: Session =
     if (file.content_type not in ["audio/mp3", "audio/wav", "audio/flac", "audio/mpeg"]):
         return {"message": "Invalid file format"}
 
-    # getting the time stamp of the audio file, will return the start and end time where ever it detects speech in the audio
-    # audio_time_stamp = await get_time_stamp(file)
-    # print(audio_time_stamp)
-    
-    # # segment the audio file base on the start and end time and transcribe the audio
-    # audio_inference = await segment_and_transcribe(contents, audio_time_stamp)
-
     project_id = str(uuid.uuid4())
 
-    print('here')
-
-    task = speech_to_text_task.delay(contents, email, model, project_id)
-    print(task.id)
-    # write_inference_to_db = await write_audio_inference_to_db(email, project_id, audio_inference, model, db)
+    task_execution_to_celery = speech_to_text_task.delay(contents, email, model, project_id)
 
     created_date = date.today()
     # create a new project
@@ -56,36 +44,37 @@ async def create_project(email: str, file: UploadFile, model: str, db: Session =
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
+
+    update_translation_status(project_id, "AUDIO FILE UPLOADED", 0, "NONE")
+
     return new_project
+
 
 @router.get('/status/{email}/{project_id}')
 async def get_project_status(email: str, project_id: str, db: Session = Depends(get_db)):
-    # get the status of the project
 
     try:
-        status_data = redis_client.get(f'translation_status:{project_id}')
-        if not status_data:
-            raise HTTPException(status_code=404, detail="Translation job not found or either completed")
+        # check if the project exists in the project table
+        project = db.query(Project).filter(Project.email == email, Project.project_id == project_id).first()
+        if (project == None):
+            return {"message": "Project not found with respective email"}
         
+        status_data = redis_client.get(f'translation_status:{project_id}')
+        if status_data is None:
+            return {"message": "success"}
+            
         status = json.loads(status_data)
+        return status
 
-        all_status_data = redis.hgetall(f'translation_status:{project_id}')
-        segment_status = {
-            k: json.loads(v) for k, v in all_status_data.items()
-        }
-
-        return {
-            "project_id": project_id,
-            "status": segment_status,
-        }
+    except redis.ConnectionError:
+        print("Failed to connect to Redis. Is Redis server running?")
+        return {"message": "Service temporarily unavailable"}
+        
     except Exception as e:
-        print(e)
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Redis error: {str(e)}")
+        return {"message": "Error retrieving status"}
 
-    project = db.query(Project).filter(Project.email == email, Project.project_id == project_id).first()
-    if (project == None):
-        return {"message": "Project not found"}
-    return project
+
 
 @router.get('/download/{email}/{project_id}/{format}')
 async def download_project(email: str, project_id: str, format: str, db: Session = Depends(get_db)):
