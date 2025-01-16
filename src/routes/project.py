@@ -81,6 +81,11 @@ async def download_project(email: str, project_id: str, format: str, db: Session
     audio_inference = db.query(audio_segment).filter(audio_segment.email == email, audio_segment.project_id == project_id).all()
     if (audio_inference == None):
         return {"message": "Project not found with respective email"}
+    elif (format not in ['txt', 'srt']):
+        return {"message": "Invalid format"}
+
+    project_detail = db.query(Project).filter(Project.email == email, Project.project_id == project_id).first()
+    project_name = project_detail.project_name.split('.')[0]
 
     def model_to_dict(instance):
         return {column.name: getattr(instance, column.name) for column in instance.__table__.columns}
@@ -95,7 +100,7 @@ async def download_project(email: str, project_id: str, format: str, db: Session
 
         txt_stream = io.StringIO(txt_content)
 
-        return StreamingResponse(txt_stream, media_type="text/plain", headers={"Content-Disposition": "attachment; filename=audio_inference.txt"})
+        return StreamingResponse(txt_stream, media_type="text/plain", headers={"Content-Disposition": f"attachment; filename={project_name}.txt"})
     elif (format == 'srt'):
         srt_content = ""
         index = 1
@@ -123,7 +128,7 @@ async def download_project(email: str, project_id: str, format: str, db: Session
         return StreamingResponse(
             srt_stream,
             media_type="application/x-subrip-text-subtitle",  # MIME type for SRT files
-            headers={"Content-Disposition": "attachment; filename=audio_srt.srt"}
+            headers={"Content-Disposition": f"attachment; filename={project_name}.srt"}
         )
     else:
         return {"message": "Invalid format"}
