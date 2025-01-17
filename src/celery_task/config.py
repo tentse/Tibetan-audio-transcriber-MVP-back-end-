@@ -1,9 +1,5 @@
 from celery import Celery
 import os
-from src.libs.audio_time_stamp import get_time_stamp
-from src.libs.transcribe import segment_and_transcribe
-from src.libs.write_audio_inference_to_db import write_audio_inference_to_db
-from src.libs.transcribe import update_translation_status
 
 #celery -A src.celery.config worker --loglevel=info
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")

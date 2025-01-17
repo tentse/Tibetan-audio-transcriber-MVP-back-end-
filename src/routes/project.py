@@ -9,6 +9,9 @@ from src.celery_task.task import speech_to_text_task
 import redis
 import json
 from src.libs.update_status import update_translation_status
+from src.libs.s3upload import upload_file_to_s3
+import time
+from src.libs.s3download import download_file_from_s3
 
 router = APIRouter()
 
@@ -36,11 +39,22 @@ async def create_project(email: str, file: UploadFile, model: str, db: Session =
 
     project_id = str(uuid.uuid4())
 
-    task_execution_to_celery = speech_to_text_task.delay(contents, email, model, project_id)
+    upload_time = milliseconds_since_epoch = int(time.time() * 1000)
+    print(upload_time)
+
+    print(file.filename)
+    
+    upload_file_url = await upload_file_to_s3(file, file.filename.split('.')[-1], f"{upload_time}-{file.filename}")
+
+    print('before downloading')
+    file_obj = await download_file_from_s3(upload_file_url)
+    print('after downloading')
+
+    # task_execution_to_celery = speech_to_text_task.delay(contents, email, model, project_id, upload_file_url)
 
     created_date = date.today()
     # create a new project
-    new_project = Project(email=email, date=created_date, project_id=project_id, project_name=file.filename , project_status="Created", audio_link="link", model=model)
+    new_project = Project(email=email, date=created_date, project_id=project_id, project_name=file.filename , project_status="CREATED", audio_link=upload_file_url, model=model)
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
@@ -78,9 +92,9 @@ async def get_project_status(email: str, project_id: str, db: Session = Depends(
 
 @router.get('/download/{email}/{project_id}/{format}')
 async def download_project(email: str, project_id: str, format: str, db: Session = Depends(get_db)):
-    audio_inference = db.query(audio_segment).filter(audio_segment.email == email, audio_segment.project_id == project_id).all()
-    if (audio_inference == None):
-        return {"message": "Project not found with respective email"}
+    project_data = db.query(Project).filter(Project.email == email, Project.project_id == project_id).first()
+    if (project_data.project_status != "COMPLETED"):
+        return {"message": "Project not found with respective email or still in progress"}
     elif (format not in ['txt', 'srt']):
         return {"message": "Invalid format"}
 
@@ -89,6 +103,8 @@ async def download_project(email: str, project_id: str, format: str, db: Session
 
     def model_to_dict(instance):
         return {column.name: getattr(instance, column.name) for column in instance.__table__.columns}
+    
+    audio_inference = db.query(audio_segment).filter(audio_segment.project_id == project_id).all()
 
     audio_inference_dicts = [model_to_dict(item) for item in audio_inference]
     # print(audio_inference_dicts)
@@ -104,18 +120,31 @@ async def download_project(email: str, project_id: str, format: str, db: Session
     elif (format == 'srt'):
         srt_content = ""
         index = 1
+
+        def seconds_to_srt_format(seconds):
+            """
+            Converts seconds to SRT time format (HH:MM:SS,mmm).
+            """
+            ms = int((seconds % 1) * 1000)  # Extract milliseconds from the decimal part
+            s = int(seconds) % 60
+            m = int(seconds // 60) % 60
+            h = int(seconds // 3600)
+            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+        
+
         for subtitle in audio_inference_dicts:
             start_val = float(subtitle['start_time'])  # parse float
             end_val = float(subtitle['end_time'])      # parse float
 
-            start_secs = int(start_val)                # integer part
-            end_secs = int(end_val)
+            # start_secs = int(start_val)                # integer part
+            # end_secs = int(end_val)
 
-            start_millis = int(round((start_val - start_secs) * 1000))
-            end_millis = int(round((end_val - end_secs) * 1000))
+            # start_millis = int(round((start_val - start_secs) * 1000))
 
-            format_start_time = f"00:00:{start_secs:02d},{start_millis:03d}"
-            format_end_time = f"00:00:{end_secs:02d},{end_millis:03d}"
+            # end_millis = int(round((end_val - end_secs) * 1000))
+
+            format_start_time = seconds_to_srt_format(start_val)
+            format_end_time = seconds_to_srt_format(end_val)
 
             srt_content += f"{index}\n"
             srt_content += f"{format_start_time} --> {format_end_time}\n"

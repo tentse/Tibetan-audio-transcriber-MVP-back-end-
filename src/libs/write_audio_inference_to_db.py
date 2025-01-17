@@ -15,12 +15,11 @@ async def write_audio_inference_to_db(email, project_id, file, model):
     with get_db_session() as db:
         segments_to_add = []
         for segment in file:
-            if ('error' in segment[2]):
-                print("error: error in speech to text details", str(segment))
-                continue
             startTime = segment[0]
             endTime = segment[1]
             stt = segment[2]['text']
+            if (stt != "" and stt[0] == "་"):
+                stt = stt[1:]
             new_segment = audio_segment(
                 email=email,
                 project_id=project_id,

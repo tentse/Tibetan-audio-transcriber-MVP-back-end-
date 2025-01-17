@@ -1,17 +1,17 @@
 from src.celery_task.config import celery_app
-from fastapi import UploadFile, Depends
-from sqlalchemy.orm import Session
-from src.database.models import get_db
 from src.libs.audio_time_stamp import get_time_stamp
 from src.libs.transcribe import segment_and_transcribe
 from src.libs.write_audio_inference_to_db import write_audio_inference_to_db
 from src.libs.transcribe import update_translation_status
+from src.libs.s3download import download_file_from_s3
 import asyncio
 
+
 @celery_app.task(bind=True)
-def speech_to_text_task(self, content: str, email: str, model: str, project_id: str):
+def speech_to_text_task(self, content: str, email: str, model: str, project_id: str, file_url: str):
     try:
-        # print('here in translation')
+
+        
 
         # Run async function using asyncio.run
         audio_time_stamp = asyncio.run(get_time_stamp(content))  # Running async code inside sync task

@@ -33,10 +33,10 @@ async def get_time_stamp(audio_content):
         tmp_end = float(tmp['end'])
         next_start = float(time['start'])
 
-        if (next_start - tmp_end) > 3.0:
+        if (next_start - tmp_end) > 2.0: # 2 second parameter for spliting the audio
             modify_time_stamp.append(tmp)
             tmp = time
-        elif (end - start) > 4.0:
+        elif (end - start) > 4.0: # 4 second parameter for spliting the audio for combining multiple audio
             modify_time_stamp.append(tmp)
             tmp = time
         else:
