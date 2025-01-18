@@ -6,6 +6,10 @@ router = APIRouter()
 
 @router.post('/register')
 async def register_user(name: str, email: str, db: Session = Depends(get_db)):
+    # check if user already exists
+    user = db.query(User).filter(User.email == email).first()
+    if (user != None):
+        return user
     # save email to database
     new_user = User(name=name, email=email)
     db.add(new_user)

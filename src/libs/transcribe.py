@@ -39,11 +39,12 @@ async def speech_to_text_tibetan(audio:str) -> dict:
 
     except httpx.HTTPStatusError as http_error:
         # Handle HTTP errors
-        return {"error": "error in speech to text http", "details": str(http_error)}
+        raise Exception(f"error in speech to text http: {str(http_error)}")
+        # raise {"error": "error in speech to text http", "details": str(http_error)}
     except Exception as e:
         # Handle other possible errors
-
-        return {"error": "error in speech to text", "details": str(e)}
+        raise Exception(f"error in speech to text: {str(e)}")
+        # raise {"error": "error in speech to text", "details": str(e)}
 
 
 async def segment_and_transcribe(total_audio_segments, project_id, audio_data, time_stamp):
@@ -66,13 +67,19 @@ async def segment_and_transcribe(total_audio_segments, project_id, audio_data, t
 
             read_audio = audio_bytes_io.read()
             # print(time)
-            transcribe_text = await speech_to_text_tibetan(read_audio)
-
-            # check if transcribe text contains error
-            while 'error' in transcribe_text:
-                print("error while transcribing audio segment, retrying")
-                time.sleep(10)
+            try:
                 transcribe_text = await speech_to_text_tibetan(read_audio)
+            except Exception as e:
+                for i in range(2):
+                    if 'error' in transcribe_text:
+                        print("error while transcribing audio segment, retrying after 60s")
+                        transcribe_text = await speech_to_text_tibetan(read_audio)
+
+                    else:
+                        break;
+                if 'error' in transcribe_text:
+                    transcribe_text = {'text': '', 'response_time': 0}
+            # check if transcribe text contains error
             
             transcribed_audio_list.append([time['start'], time['end'], transcribe_text])
 
