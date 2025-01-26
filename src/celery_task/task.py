@@ -14,8 +14,7 @@ def speech_to_text_task(self, email: str, model: str, project_id: str, file_url:
         print('downloading and getting audio file content')
         content = asyncio.run(download_file_from_s3(file_url))
         print('got audio file content')
-
-        print(content)
+        print(file_url)
 
         # Run async function using asyncio.run
         audio_time_stamp = asyncio.run(get_time_stamp(content))  # Running async code inside sync task

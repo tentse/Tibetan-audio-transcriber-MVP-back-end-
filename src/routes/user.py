@@ -1,12 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from src.database.models import User, get_db
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 router = APIRouter()
 
+class UserCreate(BaseModel):
+    name: str
+    email: str
+
 @router.post('/register')
-async def register_user(name: str, email: str, db: Session = Depends(get_db)):
+async def register_user(user: UserCreate, response: Response, db: Session = Depends(get_db)):
     # check if user already exists
+    name = user.name
+    email = user.email
+    print(name, email)
     user = db.query(User).filter(User.email == email).first()
     if (user != None):
         return user
@@ -15,6 +23,7 @@ async def register_user(name: str, email: str, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
     return new_user
 
 @router.get('/{email}')

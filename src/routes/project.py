@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from src.database.models import Project, get_db, audio_segment
 from sqlalchemy.orm import Session
@@ -11,29 +11,33 @@ import json
 from src.libs.update_status import update_translation_status
 from src.libs.s3upload import upload_file_to_s3
 import time
-from src.libs.s3download import download_file_from_s3
+from pydantic import BaseModel
 
 router = APIRouter()
 
 redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
+class ProjectUpdate(BaseModel):
+    project_id: str
+    sequence: int
+    transcription: str
+    comments: str
 
 @router.get('/{email}')
 async def get_projects(email: str, db: Session = Depends(get_db)):
     #get all the projects of the user
-    projects = db.query(Project).filter(Project.email == email).all()
+    projects = db.query(Project).filter(Project.email == email).order_by(Project.id.desc()).all()
     if (projects == None):
         return {"message": "User doesn't have any projects currently"}
     return projects
 
 
+
 @router.post('/create')
-async def create_project(email: str, file: UploadFile, model: str, db: Session = Depends(get_db)):
+async def create_project(file: UploadFile = File(...), email: str = Form(...), project_name : str = Form(...), model: str = Form(...), db: Session = Depends(get_db)):
+    
     contents = await file.read()
     await file.seek(0)
-    # if (len(contents) > 3600000):
-    #     return {"message": "Audio file is too long"}
-    # check if file uploaded is audio file (mp3, wav, flac)
     if (file.content_type not in ["audio/mp3", "audio/wav", "audio/flac", "audio/mpeg"]):
         return {"message": "Invalid file format"}
 
@@ -50,7 +54,7 @@ async def create_project(email: str, file: UploadFile, model: str, db: Session =
 
     created_date = date.today()
     # create a new project
-    new_project = Project(email=email, date=created_date, project_id=project_id, project_name=file.filename , project_status="CREATED", audio_link=upload_file_url, model=model)
+    new_project = Project(email=email, date=created_date, project_name=project_name, project_id=project_id, project_status="CREATED", audio_link=upload_file_url, model=model)
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
@@ -71,7 +75,7 @@ async def get_project_status(email: str, project_id: str, db: Session = Depends(
         
         status_data = redis_client.get(f'translation_status:{project_id}')
         if status_data is None:
-            return {"message": "success"}
+            return {"progress": 100, "status": "success", "error": "NONE"}
             
         status = json.loads(status_data)
         return status
@@ -83,7 +87,31 @@ async def get_project_status(email: str, project_id: str, db: Session = Depends(
     except Exception as e:
         print(f"Redis error: {str(e)}")
         return {"message": "Error retrieving status"}
+    
 
+@router.get('/audiosegments/{project_id}')
+async def get_audio_segments(project_id: str, db: Session = Depends(get_db)):
+    project_data = db.query(Project).filter(Project.project_id == project_id).first()
+    if (project_data == None):
+        return {"message": "Project not found with respective email"}
+    
+    audio_inference = db.query(audio_segment).filter(audio_segment.project_id == project_id).order_by(audio_segment.sequence).all()
+    return audio_inference
+
+@router.post('/audiosegments/update')
+async def update_audio_segments(project: ProjectUpdate, db: Session = Depends(get_db)):
+    project_id = project.project_id
+    transcription = project.transcription
+    comments = project.comments
+    sequence = project.sequence
+
+    project_data = db.query(Project).filter(Project.project_id == project_id).first()
+    if (project_data == None):
+        return {"message": "Project not found with respective email"}
+    
+    update_transcription = db.query(audio_segment).filter(audio_segment.project_id == project_id, audio_segment.sequence == sequence).update({audio_segment.transcription: transcription, audio_segment.comments: comments});
+    db.commit()
+    return {"message": "Transcription updated successfully"}
 
 
 @router.get('/download/{email}/{project_id}/{format}')
@@ -95,16 +123,16 @@ async def download_project(email: str, project_id: str, format: str, db: Session
         return {"message": "Invalid format"}
 
     project_detail = db.query(Project).filter(Project.email == email, Project.project_id == project_id).first()
-    project_name = project_detail.project_name.split('.')[0]
+    project_name = project_detail.project_name
 
     def model_to_dict(instance):
         return {column.name: getattr(instance, column.name) for column in instance.__table__.columns}
     
-    audio_inference = db.query(audio_segment).filter(audio_segment.project_id == project_id).all()
+    audio_inference = db.query(audio_segment).filter(audio_segment.project_id == project_id).order_by(audio_segment.sequence).all()
 
     audio_inference_dicts = [model_to_dict(item) for item in audio_inference]
-    # print(audio_inference_dicts)
-
+    print(audio_inference_dicts)
+    print(format)
     if (format == 'txt'):
         txt_content = ""
         for item in audio_inference_dicts:
@@ -146,7 +174,7 @@ async def download_project(email: str, project_id: str, format: str, db: Session
         return StreamingResponse(
             srt_stream,
             media_type="application/x-subrip-text-subtitle",  # MIME type for SRT files
-            headers={"Content-Disposition": f"attachment; filename={project_name}_subtitle.srt"}
+            headers={"Content-Disposition": f"attachment; filename={project_name}.srt"}
         )
     else:
         return {"message": "Invalid format"}

@@ -16,6 +16,7 @@ async def get_time_stamp(audio_content):
         wav,
         model,
         return_seconds=True,  # Return speech timestamps in seconds (default is samples)
+        max_speech_duration_s=5
     )
 
     print(speech_timestamps)

@@ -44,12 +44,13 @@ class audio_segment(Base):
     __tablename__ = "audio_segments"
 
     id = Column(Integer, primary_key=True, index=True)
+    sequence = Column(Integer)
     email = Column(String, index=True)
     project_id = Column(String, index=True)
     start_time = Column(String)
     end_time = Column(String)
     transcription = Column(String)
-    is_transcribed = Column(Boolean)
+    comments = Column(String, default=None)
 
 class model(Base):
     __tablename__ = "models"

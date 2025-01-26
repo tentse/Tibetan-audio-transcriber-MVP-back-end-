@@ -10,11 +10,13 @@ def get_db_session():
     finally:
         db.close()
 
-async def write_audio_inference_to_db(email, project_id, file, model):
+async def write_audio_inference_to_db(email, project_id, audio_interence, model):
 
+    audio_interence.sort(key=lambda segment: (segment[0], segment[1]))
     with get_db_session() as db:
+        sequence = 0
         segments_to_add = []
-        for segment in file:
+        for segment in audio_interence:
             startTime = segment[0]
             endTime = segment[1]
             stt = segment[2]['text']
@@ -22,13 +24,14 @@ async def write_audio_inference_to_db(email, project_id, file, model):
                 stt = stt[1:]
             new_segment = audio_segment(
                 email=email,
+                sequence=sequence,
                 project_id=project_id,
                 start_time=startTime,
                 end_time=endTime,
                 transcription=stt,
-                is_transcribed=True
             )
             segments_to_add.append(new_segment)
+            sequence += 1
 
         db.add_all(segments_to_add)
         db.commit()
@@ -41,4 +44,4 @@ async def write_audio_inference_to_db(email, project_id, file, model):
         db.commit()
 
 
-        return {"message": "success"}
+        return {"progress":"100", "status": "success", "error": "NONE"}

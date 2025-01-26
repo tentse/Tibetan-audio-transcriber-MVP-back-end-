@@ -19,7 +19,7 @@ def update_translation_status(job_id: str, status: str, progress: float = 0, err
     else:
         status_data = {
             'status': status,
-            'progress': progress,
+            'progress': int(progress),
             'error': error
         }
         redis_client.set(f'translation_status:{job_id}', json.dumps(status_data))
