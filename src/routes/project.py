@@ -23,6 +23,12 @@ class ProjectUpdate(BaseModel):
     transcription: str
     comments: str
 
+class CommentUpdate(BaseModel):
+    project_id: str
+    sequence: int
+    comments: str
+
+
 @router.get('/{email}')
 async def get_projects(email: str, db: Session = Depends(get_db)):
     #get all the projects of the user
@@ -44,9 +50,6 @@ async def create_project(file: UploadFile = File(...), email: str = Form(...), p
     project_id = str(uuid.uuid4())
 
     upload_time = milliseconds_since_epoch = int(time.time() * 1000)
-    # print(upload_time)
-
-    # print(file.filename)
     
     upload_file_url = await upload_file_to_s3(file, file.filename.split('.')[-1], f"{upload_time}-{file.filename}")
 
@@ -98,20 +101,52 @@ async def get_audio_segments(project_id: str, db: Session = Depends(get_db)):
     audio_inference = db.query(audio_segment).filter(audio_segment.project_id == project_id).order_by(audio_segment.sequence).all()
     return audio_inference
 
+
+@router.get('/audiolink/{project_id}')
+async def get_audio_link(project_id: str, db: Session = Depends(get_db)):
+    project_data = db.query(Project).filter(Project.project_id == project_id).first()
+    if (project_data == None):
+        return {"message": "Project not found with respective email"}
+    
+    return {"audio_link": project_data.audio_link}
+
+
 @router.post('/audiosegments/update')
 async def update_audio_segments(project: ProjectUpdate, db: Session = Depends(get_db)):
     project_id = project.project_id
     transcription = project.transcription
-    comments = project.comments
     sequence = project.sequence
 
     project_data = db.query(Project).filter(Project.project_id == project_id).first()
     if (project_data == None):
         return {"message": "Project not found with respective email"}
     
-    update_transcription = db.query(audio_segment).filter(audio_segment.project_id == project_id, audio_segment.sequence == sequence).update({audio_segment.transcription: transcription, audio_segment.comments: comments});
+    update_transcription = db.query(audio_segment).filter(audio_segment.project_id == project_id, audio_segment.sequence == sequence).update({audio_segment.transcription: transcription});
     db.commit()
     return {"message": "Transcription updated successfully"}
+
+@router.get('/audiosegments/comments/{project_id}/{sequence}')
+async def get_audio_segment_comments(project_id: str, sequence: str , db: Session = Depends(get_db)):
+    print(project_id, sequence)
+    get_comment = db.query(audio_segment).filter(audio_segment.project_id == project_id, audio_segment.sequence == sequence).first()
+    if (get_comment == None):
+        return {"message": "Comment not found with respective project_id and sequence"}
+    print(get_comment)
+    return get_comment
+
+@router.post('/audiosegments/comments/update')
+async def update_audio_segments_comments(data: CommentUpdate, db: Session = Depends(get_db)):
+    project_id = data.project_id
+    comments = data.comments
+    sequence = data.sequence
+
+    project_data = db.query(Project).filter(Project.project_id == project_id).first()
+    if (project_data == None):
+        return {"message": "Project not found with respective email"}
+    
+    update_comment = db.query(audio_segment).filter(audio_segment.project_id == project_id, audio_segment.sequence == sequence).update({audio_segment.comments: comments});
+    db.commit()
+    return {"message": "Comments updated successfully"}
 
 
 @router.get('/download/{email}/{project_id}/{format}')
@@ -131,12 +166,10 @@ async def download_project(email: str, project_id: str, format: str, db: Session
     audio_inference = db.query(audio_segment).filter(audio_segment.project_id == project_id).order_by(audio_segment.sequence).all()
 
     audio_inference_dicts = [model_to_dict(item) for item in audio_inference]
-    print(audio_inference_dicts)
-    print(format)
     if (format == 'txt'):
         txt_content = ""
         for item in audio_inference_dicts:
-            txt_content += f"Start Time: {item['start_time']}, End Time: {item['end_time']}, Transcription: {item['transcription']}\n"
+            txt_content += f"Start Time: {item['start_time']}, End Time: {item['end_time']}, Transcription: {item['transcription']}, Comment: {item['comments']}\n"
 
         txt_stream = io.StringIO(txt_content)
 
